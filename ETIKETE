@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="UTF-8">
+  <title>Generator etiket</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; margin-top: 15px; }
+    td { border: 1px solid #ccc; padding: 5px; cursor: pointer; min-width: 60px; text-align: center; }
+    td.selected { background-color: #d1e7dd; }
+    .etikete-list { margin-top: 20px; }
+    .etiketa-item { padding: 5px; border: 1px dashed #333; margin: 5px 0; }
+  </style>
+</head>
+<body>
+
+<h2>Generator etiket iz Excela</h2>
+
+<input type="file" id="upload" accept=".xlsx, .xls">
+<div id="excelData"></div>
+
+<button id="addEtiketa" disabled>Dodaj etiketo</button>
+<div class="etikete-list" id="etiketeList"></div>
+<button id="genPDF" disabled>Generiraj PDF</button>
+
+<script>
+  let selectedCells = [];
+  let etikete = [];
+
+  // Prikaz Excel tabele
+  document.getElementById('upload').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: 'array', cellStyles: true });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      
+      let html = "<table id='excelTable'>";
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        html += "<tr>";
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellAddress = { c: C, r: R };
+          const cellRef = XLSX.utils.encode_cell(cellAddress);
+          const cell = sheet[cellRef];
+          const text = cell ? cell.v : "";
+          html += `<td data-cell="${cellRef}">${text}</td>`;
+        }
+        html += "</tr>";
+      }
+      html += "</table>";
+      document.getElementById('excelData').innerHTML = html;
+
+      // Klik na celico
+      document.querySelectorAll("#excelTable td").forEach(td => {
+        td.addEventListener("click", () => {
+          td.classList.toggle("selected");
+          const value = td.innerText;
+          if (td.classList.contains("selected")) {
+            selectedCells.push(value);
+          } else {
+            selectedCells = selectedCells.filter(v => v !== value);
+          }
+          document.getElementById('addEtiketa').disabled = selectedCells.length === 0;
+        });
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  // Dodaj etiketo
+  document.getElementById('addEtiketa').addEventListener('click', () => {
+    if (selectedCells.length === 0) return;
+    const ponovitve = prompt("Koliko ponovitev za to etiketo?");
+    if (!ponovitve || isNaN(ponovitve)) return;
+
+    const etiketa = {
+      vsebina: selectedCells.join(" "),
+      ponovitve: parseInt(ponovitve)
+    };
+    etikete.push(etiketa);
+
+    // Prikaži na strani
+    const div = document.createElement("div");
+    div.className = "etiketa-item";
+    div.textContent = `${etiketa.vsebina} (x${etiketa.ponovitve})`;
+    document.getElementById("etiketeList").appendChild(div);
+
+    // Reset izbire
+    document.querySelectorAll("#excelTable td.selected").forEach(td => td.classList.remove("selected"));
+    selectedCells = [];
+    document.getElementById('addEtiketa').disabled = true;
+    document.getElementById('genPDF').disabled = false;
+  });
+
+  // Generiraj PDF
+  document.getElementById('genPDF').addEventListener('click', () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    let y = 20;
+    etikete.forEach(et => {
+      for (let i = 0; i < et.ponovitve; i++) {
+        doc.text(et.vsebina, 20, y);
+        y += 10;
+        if (y > 280) { // nova stran
+          doc.addPage();
+          y = 20;
+        }
+      }
+    });
+
+    doc.save("etikete.pdf");
+  });
+</script>
+
+</body>
+</html>
