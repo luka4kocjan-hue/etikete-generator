@@ -1,0 +1,1 @@
+# etikete-generator
